@@ -2,7 +2,7 @@ import enum
 import click
 import os
 from typing import Optional, Dict, List
-import numpy as np
+from numpy import ndarray
 
 from bias_handler import BiasDMHandlerContext, EABMHandler, MABMHandler, SABMHandler
 from utils import create_example_data, load_json, save_json, validate_data
@@ -17,7 +17,7 @@ class BiasDMHandlerMethod(enum.Enum):
 def print_results(
     weights: List[float],
     biased_indices: List[int],
-    B_i: np.ndarray,
+    B_i: ndarray,
     CIs: List[Dict],
     data: Dict,
 ) -> None:
@@ -42,7 +42,7 @@ def print_results(
     total_weight = 0
     for i, dm in enumerate(data["dms"]):
         status = "🚫 ИСКЛЮЧЕН" if i in biased_indices else "✅ УЧАСТВУЕТ"
-        click.echo(f"   {dm['id']}: {weights[i]:.4f} | {status}")
+        click.echo(f"   {dm['id']}: {weights[i]:.5f} | {status}")
         total_weight += weights[i]
 
     click.echo(f"\n📐 Доверительные интервалы:")
@@ -50,10 +50,10 @@ def print_results(
         ci = CIs[i]
         status = "🚫" if i in biased_indices else "✅"
         click.echo(
-            f"   {status} {dm['id']}: [{ci['LB']:.4f}, {ci['UB']:.4f}] | длина: {ci['length']:.4f}"
+            f"   {status} {dm['id']}: [{ci['LB']:.5f}, {ci['UB']:.5f}] | длина: {ci['length']:.5f}"
         )
 
-    click.echo(f"\n📈 Сумма весов: {total_weight:.6f}")
+    click.echo(f"\n📈 Сумма весов: {total_weight:.5f}")
 
 
 @click.group()
@@ -170,7 +170,7 @@ def analyze(
             
     # Применение EABM метода
     click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода...")
-    weights, biased_indices, B_i, CIs = context.handle(context)
+    weights, biased_indices, B_i, CIs = context.handle(context, True)
 
     # Вывод результатов
     print_results(weights, biased_indices, B_i, CIs, data)

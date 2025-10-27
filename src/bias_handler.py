@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import numpy as np
-from scipy import stats
+from scipy.stats import t
 
 
 class BiasDMHandlerContext:
@@ -19,8 +19,8 @@ class BiasDMHandlerContext:
     def handler(self, handler: BiasDMHandler) -> None:
         self._handler = handler
 
-    def handle(self, data):
-        return self._handler.handle(data)
+    def handle(self, data, normalized=False):
+        return self._handler.handle(data, normalized)
 
     def normalize_scores(self, scores, criteria_types):
         """
@@ -56,12 +56,14 @@ class BiasDMHandlerContext:
 
         # Преобразуем матрицу: каждый DM - строка из всех оценок
         flattened_scores = normalized_scores.reshape(I, -1)
+        
+        print("Flattened scores:", flattened_scores)
 
         means = np.mean(flattened_scores, axis=1)
         stds = np.std(flattened_scores, axis=1, ddof=1)
 
         # t-значение для доверительного интервала
-        t_value = stats.t.ppf(1 - (1 - self.alpha) / 2, N - 1)
+        t_value = t.ppf(self.alpha, N - 1)
 
         CIs = []
         for i in range(I):
@@ -137,11 +139,11 @@ class BiasDMHandlerContext:
         # Расчет общего перекрытия для каждого DM
         O_i = []
         M_i = []
+        total_overlap = []
         for i in range(I):
-            total_overlap = np.sum(overlap_matrix[i, :])
+            total_overlap.append(np.sum(overlap_matrix[i, :]))
             # Исключаем самоперекрытие (диагональный элемент)
-            O_i_value = total_overlap - overlap_matrix[i, i]
-            O_i.append(O_i_value)
+            O_i.append(total_overlap[i] - overlap_matrix[i, i])
 
             # Максимально возможное перекрытие
             M_i_value = (I - 1) * CIs[i]["length"]
@@ -150,15 +152,15 @@ class BiasDMHandlerContext:
         # Коэффициент перекрытия
         O_tilde = [O_i[i] / M_i[i] if M_i[i] > 0 else 0 for i in range(I)]
 
-        return O_tilde, overlap_matrix
+        return O_tilde, overlap_matrix, total_overlap, O_i
 
     def calc_relative_CI(self, unbiased_CIs, unbiased_scores):
         """
         Расчет относительного доверительного интервала
         """
-        I_prime, J, K = unbiased_scores.shape
+        I, J, K = unbiased_scores.shape
 
-        λ = I_prime * J * K  # Общее количество оценок после исключения
+        λ = I * J * K  # Общее количество оценок после исключения
 
         # Преобразуем в 1D массив всех оценок оставшихся DM
         flattened_all = unbiased_scores.reshape(-1)
@@ -168,7 +170,7 @@ class BiasDMHandlerContext:
         std_total = np.std(flattened_all, ddof=1)
 
         # t-значение для общего CI (степени свободы = λ - 1)
-        t_value_total = stats.t.ppf(1 - (1 - self.alpha) / 2, λ - 1)
+        t_value_total = t.ppf(self.alpha, λ - 1)
         margin_total = t_value_total * (std_total / np.sqrt(λ))
 
         # Длина общего CI
@@ -193,18 +195,18 @@ class BiasDMHandlerContext:
         sum_products = np.sum(products)
 
         weights = [
-            p / sum_products if sum_products > 0 else 0 / len(O_tilde) for p in products
+            p / sum_products if sum_products != 0 else 0 for p in products
         ]
         return weights
 
 
 class BiasDMHandler(ABC):
     @abstractmethod
-    def handle(self, context: BiasDMHandlerContext):
+    def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
         pass
 
 class EABMHandler(BiasDMHandler):
-    def handle(self, context: BiasDMHandlerContext):
+    def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
         """
         Основной метод EABM
         """
@@ -215,11 +217,20 @@ class EABMHandler(BiasDMHandler):
         # Преобразование в numpy array
         scores = np.array([dm["scores"] for dm in dms_data])
 
+        print("Scores:", scores)
+
         # 1. Нормализация оценок
-        normalized_scores = context.normalize_scores(scores, criteria_types)
+        if not normalized:
+            normalized_scores = context.normalize_scores(scores, criteria_types)
+        else:
+            normalized_scores = scores
+
+        print("Normalized scores:", normalized_scores)
 
         # 2. Расчет доверительных интервалов
         CIs = context.calc_CI(normalized_scores)
+
+        print("CIs:", CIs)
 
         # 3. Расчет индекса предвзятости
         B_i = context.calc_biasedness_index(CIs)
@@ -230,32 +241,44 @@ class EABMHandler(BiasDMHandler):
         )
 
         if len(unbiased_indices) == 0:
-            return None, None, None, None
+            return [], [], [], []
 
         # 5. Расчет коэффициента перекрытия для оставшихся DM
-        O_tilde, overlap_matrix = context.calc_overlap_ratio(unbiased_CIs)
+        O_tilde, overlap_matrix, total_overlap, O_i = context.calc_overlap_ratio(unbiased_CIs)
+
+        print("Overlap matrix:", overlap_matrix)
+        print("Total overlap:", total_overlap)
+        print("O_i:", O_i)
+        print("O_tilde:", O_tilde)
 
         # 6. Расчет относительных CI
         CI_tilde, CI_total_length = context.calc_relative_CI(
             unbiased_CIs, unbiased_scores
         )
+        
+        print("CI_total_length:", CI_total_length)
+        print("CI_tilde:", CI_tilde)
 
         # 7. Расчет весов
         weights = context.calc_weights(O_tilde, CI_tilde)
+
+        print("Weights:", weights)
 
         # Сопоставление весов с исходными индексами DM
         final_weights = [0] * len(dms_data)
         for i, idx in enumerate(unbiased_indices):
             final_weights[idx] = weights[i]
 
+        print("Final weights:", final_weights)
+
         return final_weights, biased_indices, B_i, CIs
 
 
 class MABMHandler(BiasDMHandler):
-    def handle(self, context: BiasDMHandlerContext):
+    def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
         print("MABM")
 
 
 class SABMHandler(BiasDMHandler):
-    def handle(self, context: BiasDMHandlerContext):
+    def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
         print("SABM")
