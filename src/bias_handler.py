@@ -56,8 +56,6 @@ class BiasDMHandlerContext:
 
         # Преобразуем матрицу: каждый DM - строка из всех оценок
         flattened_scores = normalized_scores.reshape(I, -1)
-        
-        print("Flattened scores:", flattened_scores)
 
         means = np.mean(flattened_scores, axis=1)
         stds = np.std(flattened_scores, axis=1, ddof=1)
@@ -152,7 +150,7 @@ class BiasDMHandlerContext:
         # Коэффициент перекрытия
         O_tilde = [O_i[i] / M_i[i] if M_i[i] > 0 else 0 for i in range(I)]
 
-        return O_tilde, overlap_matrix, total_overlap, O_i
+        return overlap_matrix, total_overlap, O_i, O_tilde  
 
     def calc_relative_CI(self, unbiased_CIs, unbiased_scores):
         """
@@ -185,7 +183,7 @@ class BiasDMHandlerContext:
             relative_ci = ci["length"] / CI_total_length if CI_total_length > 0 else 0
             CI_tilde.append(relative_ci)
 
-        return CI_tilde, CI_total_length
+        return CI_tilde
 
     def calc_weights(self, O_tilde, CI_tilde):
         """
@@ -210,68 +208,79 @@ class EABMHandler(BiasDMHandler):
         """
         Основной метод EABM
         """
+        results = {
+            "scores": [],
+            "normalized_scores": [],
+            "CIs": [],
+            "B_i": [],
+            "biased_indices": [],
+            "unbiased_indices": [],
+            "overlap_matrix": [],
+            "total_overlap": [],
+            "O_i": [],
+            "O_tilde": [],
+            "CI_tilde": [],
+            "final_weights": [],
+        }
+        
         # Извлечение данных
         dms_data = context.data["dms"]
         criteria_types = [criterion["type"] for criterion in context.data["criteria"]]
 
         # Преобразование в numpy array
         scores = np.array([dm["scores"] for dm in dms_data])
-
-        print("Scores:", scores)
+        results["scores"] = scores
 
         # 1. Нормализация оценок
         if not normalized:
             normalized_scores = context.normalize_scores(scores, criteria_types)
         else:
             normalized_scores = scores
-
-        print("Normalized scores:", normalized_scores)
+        results["normalized_scores"] = normalized_scores
 
         # 2. Расчет доверительных интервалов
         CIs = context.calc_CI(normalized_scores)
-
-        print("CIs:", CIs)
+        results["CIs"] = CIs
 
         # 3. Расчет индекса предвзятости
         B_i = context.calc_biasedness_index(CIs)
+        results["B_i"] = B_i
 
         # 4. Исключение предвзятых DM
         unbiased_scores, unbiased_CIs, unbiased_indices, biased_indices = (
             context.eliminate_biased_dms(normalized_scores, CIs, B_i)
         )
+        results["biased_indices"] = biased_indices
+        results["unbiased_indices"] = unbiased_indices
 
         if len(unbiased_indices) == 0:
-            return [], [], [], []
+            return results
 
         # 5. Расчет коэффициента перекрытия для оставшихся DM
-        O_tilde, overlap_matrix, total_overlap, O_i = context.calc_overlap_ratio(unbiased_CIs)
-
-        print("Overlap matrix:", overlap_matrix)
-        print("Total overlap:", total_overlap)
-        print("O_i:", O_i)
-        print("O_tilde:", O_tilde)
+        overlap_matrix, total_overlap, O_i, O_tilde = context.calc_overlap_ratio(
+            unbiased_CIs
+        )
+        results["overlap_matrix"] = overlap_matrix
+        results["total_overlap"] = total_overlap
+        results["O_i"] = O_i
+        results["O_tilde"] = O_tilde
 
         # 6. Расчет относительных CI
-        CI_tilde, CI_total_length = context.calc_relative_CI(
+        CI_tilde = context.calc_relative_CI(
             unbiased_CIs, unbiased_scores
         )
-        
-        print("CI_total_length:", CI_total_length)
-        print("CI_tilde:", CI_tilde)
+        results["CI_tilde"] = CI_tilde
 
         # 7. Расчет весов
         weights = context.calc_weights(O_tilde, CI_tilde)
-
-        print("Weights:", weights)
 
         # Сопоставление весов с исходными индексами DM
         final_weights = [0] * len(dms_data)
         for i, idx in enumerate(unbiased_indices):
             final_weights[idx] = weights[i]
+        results["final_weights"] = final_weights
 
-        print("Final weights:", final_weights)
-
-        return final_weights, biased_indices, B_i, CIs
+        return results
 
 
 class MABMHandler(BiasDMHandler):

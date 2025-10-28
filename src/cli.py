@@ -1,59 +1,210 @@
 import enum
 import click
 import os
-from typing import Optional, Dict, List
-from numpy import ndarray
+from typing import Optional, Dict
+import numpy as np
 
 from bias_handler import BiasDMHandlerContext, EABMHandler, MABMHandler, SABMHandler
 from utils import create_example_data, load_json, save_json, validate_data
 
 
 class BiasDMHandlerMethod(enum.Enum):
-    EABM = enum.auto(),
-    MABM = enum.auto(),
-    SABM = enum.auto(),
-    
+    EABM = (enum.auto(),)
+    MABM = (enum.auto(),)
+    SABM = (enum.auto(),)
+
 
 def print_results(
-    weights: List[float],
-    biased_indices: List[int],
-    B_i: ndarray,
-    CIs: List[Dict],
+    results: Dict,
     data: Dict,
+    verbose: bool = False,
 ) -> None:
     """Красивый вывод результатов"""
     click.echo("\n" + "=" * 60)
     click.echo("🎯 РЕЗУЛЬТАТЫ")
     click.echo("=" * 60)
 
-    click.echo(f"\n📊 Индексы предвзятости (B_i):")
-    for i, dm in enumerate(data["dms"]):
-        status = "🚫 ПРЕДВЗЯТ" if i in biased_indices else "✅ НОРМА"
-        click.echo(f"   {dm['id']}: {B_i[i]:.2f} | {status}")
+    if verbose:
+        # 1. Входные данные
+        click.echo(f"\n📊 МАТРИЦА ВХОДНЫХ ДАННЫХ:")
+        scores_array = np.array(results["scores"])
+        click.echo(f"Размерность: {scores_array.shape}")
+        for i, dm in enumerate(data["dms"]):
+            click.echo(f"   {dm['id']}:\n   {results['scores'][i]}")
 
-    click.echo(f"\n🗑️  Исключенные DM (предвзятые):")
-    if biased_indices:
-        for idx in biased_indices:
-            click.echo(f"   ❌ {data['dms'][idx]['id']}")
-    else:
-        click.echo("   ✅ Нет исключенных DM")
+        # 2. Нормализованные данные
+        click.echo(f"\n🔄 НОРМАЛИЗОВАННАЯ МАТРИЦА:")
+        norm_scores_array = np.array(results["normalized_scores"])
+        for i, dm in enumerate(data["dms"]):
+            click.echo(f"   {dm['id']}:\n   {norm_scores_array[i]}")
 
-    click.echo(f"\n⚖️  Финальные веса:")
+        # 3. Доверительные интервалы
+        click.echo(f"\n📐 ДОВЕРИТЕЛЬНЫЕ ИНТЕРВАЛЫ:")
+        for i, dm in enumerate(data["dms"]):
+            ci = results["CIs"][i]
+            status = "🚫" if i in results["biased_indices"] else "✅"
+            click.echo(
+                f"   {status} {dm['id']}: [{ci['LB']:.5f}, {ci['UB']:.5f}] | длина: {ci['length']:.5f}"
+            )
+
+        # 4. Индексы предвзятости
+        click.echo(f"\n📊 ИНДЕКСЫ ПРЕДВЗЯТОСТИ (B_i):")
+        for i, dm in enumerate(data["dms"]):
+            status = "🚫 ПРЕДВЗЯТ" if i in results["biased_indices"] else "✅ НОРМА"
+            click.echo(f"   {dm['id']}: {results['B_i'][i]:.5f} | {status}")
+
+        # 5. Исключенные DM
+        click.echo(f"\n🗑️  ИСКЛЮЧЕННЫЕ DM (ПРЕДВЗЯТЫЕ):")
+        if results["biased_indices"]:
+            for idx in results["biased_indices"]:
+                click.echo(f"   ❌ {data['dms'][idx]['id']} (индекс: {idx})")
+        else:
+            click.echo("   ✅ Нет исключенных DM")
+
+        # 6. Матрица перекрытий (только для неуbiased DM)
+        if "overlap_matrix" in results and len(results["overlap_matrix"]) > 0:
+            click.echo(f"\n🔄 МАТРИЦА ПЕРЕКРЫТИЙ:")
+            overlap_matrix = np.array(results["overlap_matrix"])
+            click.echo(f"Размерность: {overlap_matrix.shape}")
+
+            # Показываем только неуbiased DM в заголовках
+            unbiased_dms = [
+                dm
+                for i, dm in enumerate(data["dms"])
+                if i in results["unbiased_indices"]
+            ]
+
+            if unbiased_dms:
+                # Заголовки
+                header = "  " + "".join([f"{dm['id']:>10}" for dm in unbiased_dms])
+                click.echo(header)
+                click.echo("-" * (len(unbiased_dms) * 10 + 5))
+
+                # Данные
+                for i, dm in enumerate(unbiased_dms):
+                    row = f"{dm['id']:>3} "
+                    for j in range(len(unbiased_dms)):
+                        row += f"{overlap_matrix[i][j]:>10.5f}"
+                    click.echo(row)
+
+        # 7. Индивидуальные перекрытия O_i
+        if "O_i" in results and len(results["O_i"]) > 0:
+            click.echo(f"\n🎯 ИНДИВИДУАЛЬНЫЕ ПЕРЕКРЫТИЯ (O_i):")
+            unbiased_dms = [
+                dm
+                for i, dm in enumerate(data["dms"])
+                if i not in results["biased_indices"]
+            ]
+            for i, dm in enumerate(unbiased_dms):
+                click.echo(f"   {dm['id']}: {results['O_i'][i]:.5f}")
+
+        # 8. Нормализованные перекрытия O_tilde
+        if "O_tilde" in results and len(results["O_tilde"]) > 0:
+            click.echo(f"\n📏 НОРМАЛИЗОВАННЫЕ ПЕРЕКРЫТИЯ (O_tilde):")
+            unbiased_dms = [
+                dm
+                for i, dm in enumerate(data["dms"])
+                if i not in results["biased_indices"]
+            ]
+            for i, dm in enumerate(unbiased_dms):
+                click.echo(f"   {dm['id']}: {results['O_tilde'][i]:.5f}")
+
+        # 9. Относительные доверительные интервалы
+        if "CI_tilde" in results and len(results["CI_tilde"]) > 0:
+            click.echo(f"\n📐 ОТНОСИТЕЛЬНЫЕ ДОВЕРИТЕЛЬНЫЕ ИНТЕРВАЛЫ (CI_tilde):")
+            unbiased_dms = [
+                dm
+                for i, dm in enumerate(data["dms"])
+                if i not in results["biased_indices"]
+            ]
+            for i, dm in enumerate(unbiased_dms):
+                click.echo(f"   {dm['id']}: {results['CI_tilde'][i]:.5f}")
+
+    click.echo(f"\n⚖️  ФИНАЛЬНЫЕ ВЕСА:")
     total_weight = 0
+    weights = results["final_weights"]
     for i, dm in enumerate(data["dms"]):
-        status = "🚫 ИСКЛЮЧЕН" if i in biased_indices else "✅ УЧАСТВУЕТ"
+        status = "🚫 ИСКЛЮЧЕН" if i in results["biased_indices"] else "✅ УЧАСТВУЕТ"
         click.echo(f"   {dm['id']}: {weights[i]:.5f} | {status}")
         total_weight += weights[i]
 
-    click.echo(f"\n📐 Доверительные интервалы:")
-    for i, dm in enumerate(data["dms"]):
-        ci = CIs[i]
-        status = "🚫" if i in biased_indices else "✅"
-        click.echo(
-            f"   {status} {dm['id']}: [{ci['LB']:.5f}, {ci['UB']:.5f}] | длина: {ci['length']:.5f}"
-        )
-
     click.echo(f"\n📈 Сумма весов: {total_weight:.5f}")
+
+
+def save_json_results(
+    results, data, alpha, b_threshold, input_file, output_file="results.json"
+):
+    """Сохранение результатов в JSON файл"""
+    # Сохранение результатов
+    out_results = {
+        "parameters": {
+            "alpha": alpha,
+            "B_threshold": b_threshold,
+            "input_file": input_file,
+        },
+        "weights": {
+            data["dms"][i]["id"]: float(results["final_weights"][i])
+            for i in range(len(results["final_weights"]))
+        },
+        "results": {
+            "scores": {
+                data["dms"][i]["id"]: results["scores"].tolist()[i]
+                for i in range(len(results["scores"]))
+            },
+            "normalized_scores": {
+                data["dms"][i]["id"]: results["normalized_scores"].tolist()[i]
+                for i in range(len(results["normalized_scores"]))
+            },
+            "CIs": {
+                data["dms"][i]["id"]: {
+                    "mean": float(ci["mean"]),
+                    "std": float(ci["std"]),
+                    "lower_bound": float(ci["LB"]),
+                    "upper_bound": float(ci["UB"]),
+                    "length": float(ci["length"]),
+                }
+                for i, ci in enumerate(results["CIs"])
+            },
+            "biasedness_index": {
+                data["dms"][i]["id"]: float(b) for i, b in enumerate(results["B_i"])
+            },
+            "biased_indices": {
+                data["dms"][i]["id"]: i for i in results["biased_indices"]
+            },
+            "unbiased_indices": {
+                data["dms"][i]["id"]: i for i in results["unbiased_indices"]
+            },
+            "overlap_matrix": {
+                data["dms"][idx]["id"]: [
+                    float(val) for val in results["overlap_matrix"][i]
+                ]
+                for i, idx in enumerate(results["unbiased_indices"])
+            },
+            "total_overlap": {
+                data["dms"][idx]["id"]: float(results["total_overlap"][i])
+                for i, idx in enumerate(results["unbiased_indices"])
+            },
+            "O_i": {
+                data["dms"][idx]["id"]: float(results["O_i"][i])
+                for i, idx in enumerate(results["unbiased_indices"])
+            },
+            "O_tilde": {
+                data["dms"][idx]["id"]: float(results["O_tilde"][i])
+                for i, idx in enumerate(results["unbiased_indices"])
+            },
+            "CI_tilde": {
+                data["dms"][idx]["id"]: float(results["CI_tilde"][i])
+                for i, idx in enumerate(results["unbiased_indices"])
+            },
+            "final_weights": {
+                data["dms"][i]["id"]: float(fw)
+                for i, fw in enumerate(results["final_weights"])
+            },
+        },
+    }
+
+    if save_json(out_results, output_file):
+        click.echo(f"\n💾 Результаты сохранены в: {output_file}")
 
 
 @click.group()
@@ -69,9 +220,7 @@ def cli():
 @click.option(
     "--method",
     "-m",
-    type=click.Choice(
-        BiasDMHandlerMethod, case_sensitive=False
-    ),
+    type=click.Choice(BiasDMHandlerMethod, case_sensitive=False),
     default=BiasDMHandlerMethod.EABM,
     help="Метод обработки предвзятых DM",
     show_default=True,
@@ -167,36 +316,21 @@ def analyze(
         case _:
             click.echo("❌ Неизвестный метод обработки предвзятости DM", err=True)
             return
-            
-    # Применение EABM метода
+
+    # Применение метода из BiasDMHandlerMethod
     click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода...")
-    weights, biased_indices, B_i, CIs = context.handle(context, True)
+    results = context.handle(context, True)
 
     # Вывод результатов
-    print_results(weights, biased_indices, B_i, CIs, data)
+    print_results(results, data, verbose)
 
     # Сохранение результатов
-    results = {
-        "parameters": {"alpha": alpha, "B_threshold": b_threshold, "input_file": file},
-        "weights": {
-            data["dms"][i]["id"]: float(weights[i]) for i in range(len(weights))
-        },
-        "biased_dms": [data["dms"][i]["id"] for i in biased_indices],
-        "biasedness_index": {
-            data["dms"][i]["id"]: float(B_i[i]) for i in range(len(B_i))
-        },
-        "confidence_intervals": {
-            data["dms"][i]["id"]: {
-                "lower_bound": float(CIs[i]["LB"]),
-                "upper_bound": float(CIs[i]["UB"]),
-                "length": float(CIs[i]["length"]),
-            }
-            for i in range(len(CIs))
-        },
-    }
-
-    if save_json(results, output):
-        click.echo(f"\n💾 Результаты сохранены в: {output}")
+    try:
+        save_json_results(results, data, alpha, b_threshold, file, output)
+        verbose and click.echo(f"✅ Результаты сохранены в {output}")
+    except Exception as e:
+        click.echo(e)
+        return
 
     click.echo("\n🎉 Анализ завершен успешно!")
 
@@ -240,6 +374,8 @@ def info():
     click.echo("\n📖 Примеры использования:")
     click.echo("   python ./src/main.py analyze")
     click.echo("   python ./src/main.py analyze -m eabm --verbose")
-    click.echo("   python ./src/main.py analyze -m eabm -f my_data.json --alpha 0.9 -B 2")
+    click.echo(
+        "   python ./src/main.py analyze -m eabm -f my_data.json --alpha 0.9 -B 2"
+    )
     click.echo("   python ./src/main.py validate")
     click.echo("   python ./src/main.py validate -f my_data.json")
