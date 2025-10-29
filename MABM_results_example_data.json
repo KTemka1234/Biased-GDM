@@ -2,14 +2,9 @@
   "parameters": {
     "alpha": 0.95,
     "B_threshold": 2,
-    "input_file": "example_data.json"
-  },
-  "weights": {
-    "DM1": 0.0,
-    "DM2": 0.4327126489314215,
-    "DM3": 0.33950564254964405,
-    "DM4": 0.22778170851893453,
-    "DM5": 0.0
+    "gamma": 0.5,
+    "input_file": "example_data.json",
+    "output_file": "MABM_results_example_data.json"
   },
   "results": {
     "scores": {
@@ -428,9 +423,9 @@
     },
     "final_weights": {
       "DM1": 0.0,
-      "DM2": 0.4327126489314215,
-      "DM3": 0.33950564254964405,
-      "DM4": 0.22778170851893453,
+      "DM2": 0.38302299113237737,
+      "DM3": 0.3364194879414887,
+      "DM4": 0.28055752092613395,
       "DM5": 0.0
     }
   }

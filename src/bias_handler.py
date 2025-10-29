@@ -1,15 +1,24 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import Optional
 import numpy as np
 from scipy.stats import t
 
 
 class BiasDMHandlerContext:
-    def __init__(self, handler: BiasDMHandler, data, alpha=0.95, B_TH=None) -> None:
+    def __init__(
+        self,
+        handler: BiasDMHandler,
+        data: dict,
+        alpha: float = 0.95,
+        B_TH: Optional[int] = None,
+        gamma: Optional[float] = None,
+    ) -> None:
         self._handler = handler
         self.data = data
         self.alpha = alpha
         self.B_TH = B_TH
+        self.gamma = gamma
 
     @property
     def handler(self) -> BiasDMHandler:
@@ -150,7 +159,7 @@ class BiasDMHandlerContext:
         # Коэффициент перекрытия
         O_tilde = [O_i[i] / M_i[i] if M_i[i] > 0 else 0 for i in range(I)]
 
-        return overlap_matrix, total_overlap, O_i, O_tilde  
+        return overlap_matrix, total_overlap, O_i, O_tilde
 
     def calc_relative_CI(self, unbiased_CIs, unbiased_scores):
         """
@@ -192,9 +201,7 @@ class BiasDMHandlerContext:
         products = [O_tilde[i] * CI_tilde[i] for i in range(len(O_tilde))]
         sum_products = np.sum(products)
 
-        weights = [
-            p / sum_products if sum_products != 0 else 0 for p in products
-        ]
+        weights = [p / sum_products if sum_products != 0 else 0 for p in products]
         return weights
 
 
@@ -202,6 +209,7 @@ class BiasDMHandler(ABC):
     @abstractmethod
     def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
         pass
+
 
 class EABMHandler(BiasDMHandler):
     def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
@@ -222,7 +230,7 @@ class EABMHandler(BiasDMHandler):
             "CI_tilde": [],
             "final_weights": [],
         }
-        
+
         # Извлечение данных
         dms_data = context.data["dms"]
         criteria_types = [criterion["type"] for criterion in context.data["criteria"]]
@@ -266,9 +274,7 @@ class EABMHandler(BiasDMHandler):
         results["O_tilde"] = O_tilde
 
         # 6. Расчет относительных CI
-        CI_tilde = context.calc_relative_CI(
-            unbiased_CIs, unbiased_scores
-        )
+        CI_tilde = context.calc_relative_CI(unbiased_CIs, unbiased_scores)
         results["CI_tilde"] = CI_tilde
 
         # 7. Расчет весов
@@ -285,7 +291,14 @@ class EABMHandler(BiasDMHandler):
 
 class MABMHandler(BiasDMHandler):
     def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
-        print("MABM")
+        results = EABMHandler().handle(context, normalized)
+        for i in results["unbiased_indices"]:
+            results["final_weights"][i] = (
+                context.gamma / len(results["unbiased_indices"])
+                + (1 - context.gamma) * results["final_weights"][i]
+            )
+
+        return results
 
 
 class SABMHandler(BiasDMHandler):

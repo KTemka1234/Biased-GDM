@@ -64,7 +64,7 @@ def create_example_data():
             {"id": "DM4", "scores": normalized_scores[3]},
             {"id": "DM5", "scores": normalized_scores[4]},
         ],
-        "parameters": {"alpha": 0.95, "B": 2},
+        "parameters": {"alpha": 0.95, "B": 2, "gamma": 0.5},
     }
 
     return data

@@ -1,7 +1,7 @@
 import enum
 import click
 import os
-from typing import Optional, Dict
+from typing import Optional
 import numpy as np
 
 from bias_handler import BiasDMHandlerContext, EABMHandler, MABMHandler, SABMHandler
@@ -15,8 +15,8 @@ class BiasDMHandlerMethod(enum.Enum):
 
 
 def print_results(
-    results: Dict,
-    data: Dict,
+    results: dict,
+    data: dict,
     verbose: bool = False,
 ) -> None:
     """Красивый вывод результатов"""
@@ -132,7 +132,13 @@ def print_results(
 
 
 def save_json_results(
-    results, data, alpha, b_threshold, input_file, output_file="results.json"
+    results: dict,
+    data: dict,
+    alpha: float,
+    b_threshold: int,
+    gamma: float,
+    input_file: str,
+    output_file="results.json",
 ):
     """Сохранение результатов в JSON файл"""
     # Сохранение результатов
@@ -140,11 +146,9 @@ def save_json_results(
         "parameters": {
             "alpha": alpha,
             "B_threshold": b_threshold,
+            "gamma": gamma,
             "input_file": input_file,
-        },
-        "weights": {
-            data["dms"][i]["id"]: float(results["final_weights"][i])
-            for i in range(len(results["final_weights"]))
+            "output_file": output_file,
         },
         "results": {
             "scores": {
@@ -234,6 +238,7 @@ def cli():
 )
 @click.option(
     "--alpha",
+    "-a",
     type=click.FloatRange(0.9, 0.99),
     help="Уровень доверия для доверительных интервалов",
     show_default=True,
@@ -243,6 +248,14 @@ def cli():
     "--B_threshold",
     type=int,
     help="Порог предвзятости для исключения DM (по умолчанию: I-1)",
+    show_default=True,
+)
+@click.option(
+    "-g",
+    "--gamma",
+    type=click.FloatRange(0.0, 1.0),
+    help="Процент доли веса DM в общем весе",
+    show_default=True,
 )
 @click.option(
     "--output",
@@ -255,6 +268,7 @@ def analyze(
     file: str,
     alpha: float,
     b_threshold: Optional[int],
+    gamma: Optional[float],
     output: str,
     verbose: bool,
 ):
@@ -291,10 +305,14 @@ def analyze(
     if b_threshold is None:
         b_threshold = data.get("parameters", {}).get("B", len(data["dms"]) - 1)
 
+    # Определение процента доли DM в общем весе
+    if gamma is None:
+        gamma = data.get("parameters", {}).get("gamma", 0.5)
+
     # Определение имени выходного файла
     if output is None:
         base_name = os.path.splitext(os.path.basename(file))[0]
-        output = f"results_{base_name}.json"
+        output = f"{method.name}_results_{base_name}.json"
 
     if verbose:
         click.echo("\n⚙️ Параметры выполнения:")
@@ -302,17 +320,24 @@ def analyze(
         click.echo(f"* Файл исходных данных: {file}")
         click.echo(f"* Уровень доверия (a): {alpha}")
         click.echo(f"* Порог предвзятости (B): {b_threshold}")
+        click.echo(f"* Процент доли DM в общем весе (gamma): {gamma}")
         click.echo(f"* Выходной файл: {output}")
 
     # Инициализация обработчика
     context = None
     match method:
         case BiasDMHandlerMethod.EABM:
-            context = BiasDMHandlerContext(EABMHandler(), data, alpha, b_threshold)
+            context = BiasDMHandlerContext(
+                EABMHandler(), data, alpha, b_threshold, gamma
+            )
         case BiasDMHandlerMethod.MABM:
-            context = BiasDMHandlerContext(MABMHandler(), data, alpha, b_threshold)
+            context = BiasDMHandlerContext(
+                MABMHandler(), data, alpha, b_threshold, gamma
+            )
         case BiasDMHandlerMethod.SABM:
-            context = BiasDMHandlerContext(SABMHandler(), data, alpha, b_threshold)
+            context = BiasDMHandlerContext(
+                SABMHandler(), data, alpha, b_threshold, gamma
+            )
         case _:
             click.echo("❌ Неизвестный метод обработки предвзятости DM", err=True)
             return
@@ -326,7 +351,7 @@ def analyze(
 
     # Сохранение результатов
     try:
-        save_json_results(results, data, alpha, b_threshold, file, output)
+        save_json_results(results, data, alpha, b_threshold, gamma, file, output)
         verbose and click.echo(f"✅ Результаты сохранены в {output}")
     except Exception as e:
         click.echo(e)
