@@ -20,5 +20,13 @@
             "console": "integratedTerminal",
             "args": "analyze -m mabm"
         },
+        {
+            "name": "Debug: SABM",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/main.py",
+            "console": "integratedTerminal",
+            "args": "analyze -m sabm"
+        }
     ]
 }

@@ -210,12 +210,7 @@ class BiasDMHandler(ABC):
     def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
         pass
 
-
-class EABMHandler(BiasDMHandler):
-    def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
-        """
-        Основной метод EABM
-        """
+    def extarct_data(self, context: BiasDMHandlerContext):
         results = {
             "scores": [],
             "normalized_scores": [],
@@ -238,6 +233,16 @@ class EABMHandler(BiasDMHandler):
         # Преобразование в numpy array
         scores = np.array([dm["scores"] for dm in dms_data])
         results["scores"] = scores
+
+        return dms_data, criteria_types, scores, results
+
+
+class EABMHandler(BiasDMHandler):
+    def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
+        """
+        Основной метод EABM
+        """
+        dms_data, criteria_types, scores, results = self.extarct_data(context)
 
         # 1. Нормализация оценок
         if not normalized:
@@ -303,4 +308,44 @@ class MABMHandler(BiasDMHandler):
 
 class SABMHandler(BiasDMHandler):
     def handle(self, context: BiasDMHandlerContext, normalized: bool = False):
-        print("SABM")
+        dms_data, criteria_types, scores, results = self.extarct_data(context)
+
+        # 1. Нормализация оценок
+        if not normalized:
+            normalized_scores = context.normalize_scores(scores, criteria_types)
+        else:
+            normalized_scores = scores
+        results["normalized_scores"] = normalized_scores
+
+        # 2. Расчет доверительных интервалов
+        CIs = context.calc_CI(normalized_scores)
+        results["CIs"] = CIs
+
+        # 3. Расчет индекса предвзятости
+        B_i = context.calc_biasedness_index(CIs)
+        results["B_i"] = B_i
+
+        results["unbiased_indices"] = [i for i in range(len(dms_data))]
+
+        # 5. Расчет коэффициента перекрытия для оставшихся DM
+        overlap_matrix, total_overlap, O_i, O_tilde = context.calc_overlap_ratio(CIs)
+        results["overlap_matrix"] = overlap_matrix
+        results["total_overlap"] = total_overlap
+        results["O_i"] = O_i
+        results["O_tilde"] = O_tilde
+
+        # 6. Расчет относительных CI
+        CI_tilde = context.calc_relative_CI(CIs, normalized_scores)
+        results["CI_tilde"] = CI_tilde
+
+        # 7. Расчет весов
+        final_weights = context.calc_weights(O_tilde, CI_tilde)
+        results["final_weights"] = final_weights
+
+        for i, weight in enumerate(final_weights):
+            results["final_weights"][i] = (
+                context.gamma / len(results["unbiased_indices"])
+                + (1 - context.gamma) * weight
+            )
+
+        return results
