@@ -405,6 +405,7 @@ class BiasDMHandler(ABC):
             results["unbiased_indices"] = unbiased_indices
 
         if len(unbiased_indices) == 0:
+            results["final_weights"] = np.zeros(len(dms_data))
             return results
 
         # 5. Расчет коэффициента перекрытия для оставшихся DM
@@ -432,7 +433,7 @@ class BiasDMHandler(ABC):
             )
 
         # Сопоставление весов с исходными индексами DM
-        final_weights = [0] * len(dms_data)
+        final_weights = np.zeros(len(dms_data))
         for i, idx in enumerate(unbiased_indices):
             final_weights[idx] = weights[i]
         results["final_weights"] = final_weights

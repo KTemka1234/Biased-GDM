@@ -34,9 +34,8 @@ def print_results(
 
         # 2. Нормализованные данные
         click.echo(f"\n🔄 НОРМАЛИЗОВАННАЯ МАТРИЦА:")
-        norm_scores_array = np.array(results["normalized_scores"])
         for i, dm in enumerate(data["dms"]):
-            click.echo(f"   {dm['id']}:\n   {norm_scores_array[i]}")
+            click.echo(f"   {dm['id']}:\n   {results['normalized_scores'][i]}")
 
         # 3. Доверительные интервалы
         click.echo(f"\n📐 ДОВЕРИТЕЛЬНЫЕ ИНТЕРВАЛЫ:")
@@ -57,7 +56,7 @@ def print_results(
         click.echo(f"\n🗑️  ИСКЛЮЧЕННЫЕ DM (ПРЕДВЗЯТЫЕ):")
         if results["biased_indices"]:
             for idx in results["biased_indices"]:
-                click.echo(f"   ❌ {data['dms'][idx]['id']} (индекс: {idx})")
+                click.echo(f"   ❌ {data['dms'][idx]['id']}")
         else:
             click.echo("   ✅ Нет исключенных DM")
 
@@ -273,11 +272,13 @@ def analyze(
     verbose: bool,
 ):
     """Запустить анализ предвзятых экспертов"""
+    normalized = False
     if file == "example_data.json":
         example_data = create_example_data()
         try:
             save_json(example_data, "example_data.json")
             verbose and click.echo("✅ Созданы демонстрационные данные")
+            normalized = True
         except Exception as e:
             click.echo(e)
             return
@@ -344,7 +345,7 @@ def analyze(
 
     # Применение метода из BiasDMHandlerMethod
     click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода...")
-    results = context.handle(context, True)
+    results = context.handle(context, normalized)
 
     # Вывод результатов
     print_results(results, data, verbose)
