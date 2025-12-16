@@ -345,7 +345,7 @@ def analyze(
 
     # Применение метода из BiasDMHandlerMethod
     click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода...")
-    results = context.handle(context, normalized)
+    results = context.handle(normalized)
 
     # Вывод результатов
     print_results(results, data, verbose)

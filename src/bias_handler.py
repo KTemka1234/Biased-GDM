@@ -51,7 +51,7 @@ class BiasDMHandlerContext:
     def handler(self, handler: BiasDMHandler) -> None:
         self._handler = handler
 
-    def handle(self, data: dict, normalized: bool = False) -> dict:
+    def handle(self, normalized: bool = False) -> dict:
         """
         Метод делегирования обработки данных заданному обработчику.
 
@@ -62,7 +62,7 @@ class BiasDMHandlerContext:
         Returns:
             dict: Результаты обработки
         """
-        return self._handler.handle(data, normalized)
+        return self._handler.handle(self, normalized)
 
     def normalize_scores(self, scores: list, criteria_types: list) -> np.ndarray:
         """
