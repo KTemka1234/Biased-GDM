@@ -27,9 +27,9 @@ class EnhancedBiasDMHandlerContext(BiasDMHandlerContext):
             handler: Обработчик предвзятости
             data: Входные данные
             alpha: Уровень доверия (0 < alpha < 1)
-            B_TH: Пороговое значение индекса глобальной предвзятости
+            B_TH: Пороговое значение индекса глобальной предвзятости (целое число > 0)
             gamma: Коэффициент доли веса конкретного DM в общем весе
-            L_TH: Пороговое значение индекса локальной предвзятости
+            L_TH: Пороговое значение индекса локальной предвзятости (0 < L_TH < 1)
         """
         super().__init__(handler, data, alpha, B_TH, gamma)
         self.L_TH = L_TH
@@ -184,17 +184,17 @@ class EnhancedBiasDMHandler(BiasDMHandler):
             unbiased_scores, unbiased_CIs, unbiased_indices, biased_indices = (
                 context.eliminate_biased_dms(normalized_scores, CIs, B_i)
             )
-            local_biased_indices, local_unbiased_indices = (
-                context.eliminate_local_biased_dms(L_i)
-            )
+            local_biased_indices, _ = context.eliminate_local_biased_dms(L_i)
 
             results["global_biased_indices"] = biased_indices
             results["local_biased_indices"] = local_biased_indices
 
             biased_indices = list(set(biased_indices + local_biased_indices))
             unbiased_indices = [i for i in unbiased_indices if i not in biased_indices]
-            unbiased_scores = np.array([unbiased_scores[i] for i in unbiased_indices])
-            unbiased_CIs = [unbiased_CIs[i] for i in unbiased_indices]
+            
+            positions = [unbiased_indices.index(i) for i in unbiased_indices]
+            unbiased_scores = np.array([unbiased_scores[pos] for pos in positions])
+            unbiased_CIs = [unbiased_CIs[pos] for pos in positions]
 
             results["biased_indices"] = biased_indices
             results["unbiased_indices"] = unbiased_indices

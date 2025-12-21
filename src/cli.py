@@ -5,7 +5,13 @@ from typing import Optional
 import numpy as np
 
 from bias_handler import BiasDMHandlerContext, EABMHandler, MABMHandler, SABMHandler
+from enhanced_bias_handler import EnhancedBiasDMHandlerContext, EnhancedEABMHandler, EnhancedMABMHandler, EnhancedSABMHandler
 from utils import create_example_data, load_json, save_json, validate_data
+
+
+class BiasDetectionType(enum.Enum):
+    GLOBAL = (enum.auto(),)
+    LOCAL = (enum.auto(),)
 
 
 class BiasDMHandlerMethod(enum.Enum):
@@ -18,6 +24,7 @@ def print_results(
     results: dict,
     data: dict,
     verbose: bool = False,
+    local_bias: bool = False,
 ) -> None:
     """Красивый вывод результатов"""
     click.echo("\n" + "=" * 60)
@@ -37,7 +44,13 @@ def print_results(
         for i, dm in enumerate(data["dms"]):
             click.echo(f"   {dm['id']}:\n   {results['normalized_scores'][i]}")
 
-        # 3. Доверительные интервалы
+        # 3. Консенсусные оценки
+        if local_bias:
+            click.echo(f"\n🤝 КОНСЕНСУСНЫЕ ОЦЕНКИ:")
+            for i, criterion in enumerate(data["criteria"]):
+                click.echo(f"   {criterion['name']}: {results['consensus_scores'][i]}")
+
+        # 4. Доверительные интервалы
         click.echo(f"\n📐 ДОВЕРИТЕЛЬНЫЕ ИНТЕРВАЛЫ:")
         for i, dm in enumerate(data["dms"]):
             ci = results["CIs"][i]
@@ -46,13 +59,19 @@ def print_results(
                 f"   {status} {dm['id']}: [{ci['LB']:.5f}, {ci['UB']:.5f}] | длина: {ci['length']:.5f}"
             )
 
-        # 4. Индексы предвзятости
+        # 5. Индексы предвзятости
         click.echo(f"\n📊 ИНДЕКСЫ ПРЕДВЗЯТОСТИ (B_i):")
         for i, dm in enumerate(data["dms"]):
             status = "🚫 ПРЕДВЗЯТ" if i in results["biased_indices"] else "✅ НОРМА"
             click.echo(f"   {dm['id']}: {results['B_i'][i]:.5f} | {status}")
 
-        # 5. Исключенные DM
+        # 6. Локальные индексы предвзятости
+        if local_bias:
+            click.echo(f"\n📊 ЛОКАЛЬНЫЕ ИНДЕКСЫ ПРЕДВЗЯТОСТИ (L_i):")
+            for i, dm in enumerate(data["dms"]):
+                click.echo(f"   {dm['id']}: {results['L_i'][i]:.5f}")
+
+        # 7. Исключенные DM
         click.echo(f"\n🗑️  ИСКЛЮЧЕННЫЕ DM (ПРЕДВЗЯТЫЕ):")
         if results["biased_indices"]:
             for idx in results["biased_indices"]:
@@ -60,7 +79,7 @@ def print_results(
         else:
             click.echo("   ✅ Нет исключенных DM")
 
-        # 6. Матрица перекрытий (только для неуbiased DM)
+        # 8. Матрица перекрытий (только для неуbiased DM)
         if "overlap_matrix" in results and len(results["overlap_matrix"]) > 0:
             click.echo(f"\n🔄 МАТРИЦА ПЕРЕКРЫТИЙ:")
             overlap_matrix = np.array(results["overlap_matrix"])
@@ -86,7 +105,7 @@ def print_results(
                         row += f"{overlap_matrix[i][j]:>10.5f}"
                     click.echo(row)
 
-        # 7. Индивидуальные перекрытия O_i
+        # 9. Индивидуальные перекрытия O_i
         if "O_i" in results and len(results["O_i"]) > 0:
             click.echo(f"\n🎯 ИНДИВИДУАЛЬНЫЕ ПЕРЕКРЫТИЯ (O_i):")
             unbiased_dms = [
@@ -97,7 +116,7 @@ def print_results(
             for i, dm in enumerate(unbiased_dms):
                 click.echo(f"   {dm['id']}: {results['O_i'][i]:.5f}")
 
-        # 8. Нормализованные перекрытия O_tilde
+        # 10. Нормализованные перекрытия O_tilde
         if "O_tilde" in results and len(results["O_tilde"]) > 0:
             click.echo(f"\n📏 НОРМАЛИЗОВАННЫЕ ПЕРЕКРЫТИЯ (O_tilde):")
             unbiased_dms = [
@@ -108,7 +127,7 @@ def print_results(
             for i, dm in enumerate(unbiased_dms):
                 click.echo(f"   {dm['id']}: {results['O_tilde'][i]:.5f}")
 
-        # 9. Относительные доверительные интервалы
+        # 11. Относительные доверительные интервалы
         if "CI_tilde" in results and len(results["CI_tilde"]) > 0:
             click.echo(f"\n📐 ОТНОСИТЕЛЬНЫЕ ДОВЕРИТЕЛЬНЫЕ ИНТЕРВАЛЫ (CI_tilde):")
             unbiased_dms = [
@@ -229,6 +248,14 @@ def cli():
     show_default=True,
 )
 @click.option(
+    "--bias-detection",
+    "-b",
+    type=click.Choice(BiasDetectionType, case_sensitive=False),
+    default=BiasDetectionType.GLOBAL,
+    help="Тип обнаружения предвзятости DM",
+    show_default=True,
+)
+@click.option(
     "--file",
     "-f",
     default="example_data.json",
@@ -243,10 +270,17 @@ def cli():
     show_default=True,
 )
 @click.option(
-    "-B",
     "--B_threshold",
+    "-B",
     type=int,
-    help="Порог предвзятости для исключения DM (по умолчанию: I-1)",
+    help="Порог глобальной предвзятости для исключения DM (по умолчанию: I-1)",
+    show_default=True,
+)
+@click.option(
+    "--L_threshold",
+    "-L",
+    type=click.FloatRange(0.0, 1.0),
+    help="Порог локальной предвзятости для исключения DM",
     show_default=True,
 )
 @click.option(
@@ -264,9 +298,11 @@ def cli():
 @click.option("--verbose", "-v", is_flag=True, help="Подробный вывод")
 def analyze(
     method: BiasDMHandlerMethod,
+    bias_detection: BiasDetectionType,
     file: str,
     alpha: float,
     b_threshold: Optional[int],
+    l_threshold: Optional[float],
     gamma: Optional[float],
     output: str,
     verbose: bool,
@@ -305,6 +341,9 @@ def analyze(
     # Определение порога предвзятости
     if b_threshold is None:
         b_threshold = data.get("parameters", {}).get("B", len(data["dms"]) - 1)
+        
+    if l_threshold is None:
+        l_threshold = data.get("parameters", {}).get("L", 0.2)
 
     # Определение процента доли DM в общем весе
     if gamma is None:
@@ -317,40 +356,50 @@ def analyze(
 
     if verbose:
         click.echo("\n⚙️ Параметры выполнения:")
-        click.echo(f"* Метод обработки предвзятости: {method.name}")
+        click.echo(f"* Метод обработки предвзятости: {method.name}. Тип обнаружения предвзятости: {bias_detection.name}")
         click.echo(f"* Файл исходных данных: {file}")
         click.echo(f"* Уровень доверия (a): {alpha}")
         click.echo(f"* Порог предвзятости (B): {b_threshold}")
         click.echo(f"* Процент доли DM в общем весе (gamma): {gamma}")
+        click.echo(f"* Порог локальной предвзятости (L): {l_threshold}")
         click.echo(f"* Выходной файл: {output}")
 
     # Инициализация обработчика
-    context = None
+    context = BiasDMHandlerContext(EABMHandler(), data, alpha, b_threshold, gamma)
     match method:
         case BiasDMHandlerMethod.EABM:
-            context = BiasDMHandlerContext(
-                EABMHandler(), data, alpha, b_threshold, gamma
-            )
+            pass
         case BiasDMHandlerMethod.MABM:
-            context = BiasDMHandlerContext(
-                MABMHandler(), data, alpha, b_threshold, gamma
-            )
+            context.handler = MABMHandler()
         case BiasDMHandlerMethod.SABM:
-            context = BiasDMHandlerContext(
-                SABMHandler(), data, alpha, b_threshold, gamma
-            )
+            context.handler = SABMHandler()
         case _:
             click.echo("❌ Неизвестный метод обработки предвзятости DM", err=True)
             return
 
-    # Применение метода из BiasDMHandlerMethod
-    click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода...")
+    match bias_detection:
+        case BiasDetectionType.GLOBAL:
+            pass
+        case BiasDetectionType.LOCAL:
+            handler = context.handler
+            if isinstance(handler, EABMHandler):
+                handler = EnhancedEABMHandler()
+            elif isinstance(handler, MABMHandler):
+                handler = EnhancedMABMHandler()
+            else:
+                handler = EnhancedSABMHandler() 
+            context = EnhancedBiasDMHandlerContext(
+                handler, data, alpha, b_threshold, gamma, l_threshold
+            )
+        case _:
+            click.echo("❌ Неизвестный тип обнаружения предвзятости DM", err=True)
+            return
+
+    click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода. Тип обнаружения: {bias_detection.name}")
     results = context.handle(normalized)
 
-    # Вывод результатов
-    print_results(results, data, verbose)
+    print_results(results, data, verbose, bias_detection == BiasDetectionType.LOCAL)
 
-    # Сохранение результатов
     try:
         save_json_results(results, data, alpha, b_threshold, gamma, file, output)
         verbose and click.echo(f"✅ Результаты сохранены в {output}")
