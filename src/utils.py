@@ -64,7 +64,7 @@ def create_example_data():
             {"id": "DM4", "scores": normalized_scores[3]},
             {"id": "DM5", "scores": normalized_scores[4]},
         ],
-        "parameters": {"alpha": 0.95, "B": 2, "gamma": 0.5},
+        "parameters": {"alpha": 0.95, "B": 2, "gamma": 0.5, "L": 0.25},
     }
 
     return data
@@ -91,15 +91,142 @@ def load_json(filename: str) -> Optional[Dict]:
 
 def validate_data(data: Dict) -> bool:
     """Проверка корректности загруженных данных"""
+    
+    # 1. Проверка наличия обязательных полей
     required_fields = ["alternatives", "criteria", "dms"]
-
     for field in required_fields:
         if field not in data:
             raise Exception(f"❌ Отсутствует обязательное поле: {field}")
 
-    # Проверка структуры DM
-    for i, dm in enumerate(data["dms"]):
-        if "id" not in dm or "scores" not in dm:
-            raise Exception(f"❌ Некорректная структура DM #{i + 1}")
+    # 2. Валидация alternatives
+    alternatives = data["alternatives"]
+    if not isinstance(alternatives, list):
+        raise ValueError("❌ Поле 'alternatives' должно быть списком")
+
+    if len(alternatives) == 0:
+        raise ValueError("❌ Список альтернатив не может быть пустым")
+
+    for i, alt in enumerate(alternatives):
+        if not isinstance(alt, str):
+            raise ValueError(f"❌ Альтернатива #{i + 1} должна быть строкой")
+        if not alt.strip():
+            raise ValueError(f"❌ Альтернатива #{i + 1} не может быть пустой строкой")
+
+    num_alternatives = len(alternatives)
+
+    # 3. Валидация criteria
+    criteria = data["criteria"]
+    if not isinstance(criteria, list):
+        raise ValueError("❌ Поле 'criteria' должно быть списком")
+
+    if len(criteria) == 0:
+        raise ValueError("❌ Список критериев не может быть пустым")
+
+    for i, criterion in enumerate(criteria):
+        if not isinstance(criterion, dict):
+            raise ValueError(f"❌ Критерий #{i + 1} должен быть словарем")
+
+        if "name" not in criterion:
+            raise ValueError(f"❌ Критерий #{i + 1} должен иметь поле 'name'")
+        if not isinstance(criterion["name"], str):
+            raise ValueError(f"❌ Имя критерия #{i + 1} должно быть строкой")
+
+        if "type" not in criterion:
+            raise ValueError(f"❌ Критерий #{i + 1} должен иметь поле 'type'")
+        if criterion["type"] not in ["positive", "negative"]:
+            raise ValueError(
+                f"❌ Тип критерия #{i + 1} должен быть 'positive' или 'negative'"
+            )
+
+    num_criteria = len(criteria)
+
+    # 4. Валидация dms
+    dms = data["dms"]
+    if not isinstance(dms, list):
+        raise ValueError("❌ Поле 'dms' должно быть списком")
+
+    if len(dms) == 0:
+        raise ValueError("❌ Список DM не может быть пустым")
+
+    dm_ids = set()
+    for i, dm in enumerate(dms):
+        if not isinstance(dm, dict):
+            raise ValueError(f"❌ DM #{i + 1} должен быть словарем")
+
+        # Проверка id
+        if "id" not in dm:
+            raise ValueError(f"❌ DM #{i + 1} должен иметь поле 'id'")
+
+        dm_id = dm["id"]
+        if not isinstance(dm_id, str):
+            raise ValueError(f"❌ ID DM #{i + 1} должен быть строкой")
+        if not dm_id.strip():
+            raise ValueError(f"❌ ID DM #{i + 1} не может быть пустой строкой")
+
+        if dm_id in dm_ids:
+            raise ValueError(f"❌ Дублирующийся ID DM: {dm_id}")
+        dm_ids.add(dm_id)
+
+        # Проверка scores
+        if "scores" not in dm:
+            raise ValueError(f"❌ DM #{i + 1} должен иметь поле 'scores'")
+
+        scores = dm["scores"]
+        if not isinstance(scores, list):
+            raise ValueError(f"❌ Scores DM #{i + 1} должен быть списком")
+
+        if len(scores) != num_alternatives:
+            raise ValueError(
+                f"❌ Количество строк в scores DM '{dm_id}' должно быть равно "
+                f"количеству альтернатив ({num_alternatives}), получено {len(scores)}"
+            )
+
+        for alt_idx, alt_scores in enumerate(scores):
+            if not isinstance(alt_scores, list):
+                raise ValueError(
+                    f"❌ Scores для альтернативы #{alt_idx + 1} у DM '{dm_id}' должен быть списком"
+                )
+
+            if len(alt_scores) != num_criteria:
+                raise ValueError(
+                    f"❌ Количество оценок для альтернативы '{alternatives[alt_idx]}' у DM '{dm_id}' "
+                    f"должно быть равно количеству критериев ({num_criteria}), получено {len(alt_scores)}"
+                )
+
+            for crit_idx, score in enumerate(alt_scores):
+                if not isinstance(score, (int, float)):
+                    raise ValueError(
+                        f"❌ Оценка для альтернативы '{alternatives[alt_idx]}' "
+                        f"по критерию '{criteria[crit_idx]['name']}' у DM '{dm_id}' "
+                        f"должна быть числом, получено {type(score)}"
+                    )
+
+    # 5. Валидация parameters (опционально)
+    if "parameters" in data:
+        parameters = data["parameters"]
+        if not isinstance(parameters, dict):
+            raise ValueError("❌ Поле 'parameters' должно быть словарем")
+
+        # Проверка конкретных параметров
+        if "alpha" in parameters:
+            alpha = parameters["alpha"]
+            if not isinstance(alpha, (int, float)):
+                raise ValueError("❌ Параметр 'alpha' должен быть числом")
+            if not (0 <= alpha <= 1):
+                raise ValueError("❌ Параметр 'alpha' должен быть в диапазоне [0, 1]")
+
+        if "B" in parameters:
+            B = parameters["B"]
+            if not isinstance(B, (int, float)):
+                raise ValueError("❌ Параметр 'B' должен быть числом")
+            if B <= 0:
+                raise ValueError("❌ Параметр 'B' должен быть положительным числом")
+
+        if "gamma" in parameters:
+            gamma = parameters["gamma"]
+            if not isinstance(gamma, (int, float)):
+                raise ValueError("❌ Параметр 'gamma' должен быть числом")
+            if not (0 <= gamma <= 1):
+                raise ValueError("❌ Параметр 'gamma' должен быть в диапазоне [0, 1]")
 
     return True

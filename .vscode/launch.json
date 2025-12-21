@@ -17,7 +17,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
-            "args": "analyze"
+            "args": "analyze -b local -v"
         },
         {
             "name": "Debug: MABM",
@@ -25,7 +25,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
-            "args": "analyze -m mabm"
+            "args": "analyze -m mabm -b local -v"
         },
         {
             "name": "Debug: SABM",
@@ -33,7 +33,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
-            "args": "analyze -m sabm"
+            "args": "analyze -m sabm -b local -v"
         }
     ]
 }

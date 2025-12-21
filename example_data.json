@@ -201,6 +201,7 @@
   "parameters": {
     "alpha": 0.95,
     "B": 2,
-    "gamma": 0.5
+    "gamma": 0.5,
+    "L": 0.25
   }
 }
