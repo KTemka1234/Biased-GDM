@@ -5,8 +5,20 @@ from typing import Optional
 import numpy as np
 
 from bias_handler import BiasDMHandlerContext, EABMHandler, MABMHandler, SABMHandler
-from enhanced_bias_handler import EnhancedBiasDMHandlerContext, EnhancedEABMHandler, EnhancedMABMHandler, EnhancedSABMHandler
-from utils import create_example_data, load_json, save_json, validate_data
+from enhanced_bias_handler import (
+    EnhancedBiasDMHandlerContext,
+    EnhancedEABMHandler,
+    EnhancedMABMHandler,
+    EnhancedSABMHandler,
+)
+from utils import (
+    create_example_data,
+    load_json,
+    save_json,
+    validate_data,
+    visualize_global_biases,
+    visualize_local_biases,
+)
 
 
 class BiasDetectionType(enum.Enum):
@@ -46,16 +58,16 @@ def print_results(
         click.echo(f"\n🔄 НОРМАЛИЗОВАННАЯ МАТРИЦА:")
         for i, dm in enumerate(data["dms"]):
             click.echo(f"{dm['id']}:")
-            matrix = results['normalized_scores'][i]
+            matrix = results["normalized_scores"][i]
             for row in matrix:
-                click.echo(f"   {[f"{value:.2f}" for value in row]}")
+                click.echo(f"   {[f'{value:.2f}' for value in row]}")
 
         # 3. Консенсусные оценки
         if local_bias:
             click.echo(f"\n🤝 КОНСЕНСУСНЫЕ ОЦЕНКИ АЛЬТЕРНАТИВ:")
             for i, alt in enumerate(data["alternatives"]):
                 click.echo(
-                    f"   {alt}: {[f"{score:.2f}" for score in results["consensus_scores"][i]]}"
+                    f"   {alt}: {[f'{score:.2f}' for score in results['consensus_scores'][i]]}"
                 )
 
         # 4. Доверительные интервалы
@@ -245,7 +257,6 @@ def save_json_results(
         out_results["results"]["local_biasedness_index"] = {
             data["dms"][i]["id"]: float(b) for i, b in enumerate(results["L_i"])
         }
-        
 
     if save_json(out_results, output_file):
         click.echo(f"\n💾 Результаты сохранены в: {output_file}")
@@ -315,7 +326,7 @@ def cli():
 @click.option(
     "--output",
     "-o",
-    help="Имя выходного файла для результатов (по умолчанию: results_<input_file>.json)",
+    help="Имя выходного файла или директории для результатов (по умолчанию: results_<input_file>.json)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Подробный вывод")
 def analyze(
@@ -363,7 +374,7 @@ def analyze(
     # Определение порога предвзятости
     if b_threshold is None:
         b_threshold = data.get("parameters", {}).get("B", len(data["dms"]) - 1)
-        
+
     if l_threshold is None:
         l_threshold = data.get("parameters", {}).get("L", 0.2)
 
@@ -376,9 +387,14 @@ def analyze(
         base_name = os.path.splitext(os.path.basename(file))[0]
         output = f"{method.name}_results_{base_name}.json"
 
+    if os.path.isdir(output):
+        output = os.path.join(output, f"{method.name}_results_{os.path.basename(file)}")
+
     if verbose:
         click.echo("\n⚙️ Параметры выполнения:")
-        click.echo(f"* Метод обработки предвзятости: {method.name}. Тип обнаружения предвзятости: {bias_detection.name}")
+        click.echo(
+            f"* Метод обработки предвзятости: {method.name}. Тип обнаружения предвзятости: {bias_detection.name}"
+        )
         click.echo(f"* Файл исходных данных: {file}")
         click.echo(f"* Уровень доверия (a): {alpha}")
         click.echo(f"* Порог предвзятости (B): {b_threshold}")
@@ -409,7 +425,7 @@ def analyze(
             elif isinstance(handler, MABMHandler):
                 handler = EnhancedMABMHandler()
             else:
-                handler = EnhancedSABMHandler() 
+                handler = EnhancedSABMHandler()
             context = EnhancedBiasDMHandlerContext(
                 handler, data, alpha, b_threshold, gamma, l_threshold
             )
@@ -417,18 +433,26 @@ def analyze(
             click.echo("❌ Неизвестный тип обнаружения предвзятости DM", err=True)
             return
 
-    click.echo(f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода. Тип обнаружения: {bias_detection.name}")
+    click.echo(
+        f"\n🔄 Начало анализа предвзятости с помощью {method.name} метода. Тип обнаружения: {bias_detection.name}"
+    )
     results = context.handle(normalized)
 
     print_results(results, data, verbose, bias_detection == BiasDetectionType.LOCAL)
 
     try:
-        save_json_results(results, data, alpha, b_threshold, gamma, l_threshold, file, output)
+        save_json_results(
+            results, data, alpha, b_threshold, gamma, l_threshold, file, output
+        )
         verbose and click.echo(f"✅ Результаты сохранены в {output}")
     except Exception as e:
         click.echo(e)
         return
 
+    # Визуализация предвзятости экспертов
+    visualize_global_biases(output, b_threshold)
+    visualize_local_biases(output, 0, 0, l_threshold) if bias_detection == BiasDetectionType.LOCAL else None
+    
     click.echo("\n🎉 Анализ завершен успешно!")
 
 

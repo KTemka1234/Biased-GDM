@@ -17,7 +17,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
-            "args": "analyze -b local -v"
+            "args": "analyze -b local -v -f './synthetic_data/experts100_5.json' -o ./synthetic_data/results/"
         },
         {
             "name": "Debug: MABM",
