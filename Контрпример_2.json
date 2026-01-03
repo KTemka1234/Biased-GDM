@@ -1,8 +1,8 @@
 {
   "alternatives": [
-    "iPhone 17 Pro Max",
-    "Samsung Galaxy S25 Ultra",
-    "Xiaomi 17 Pro Max"
+    "Phone_1",
+    "Phone_2",
+    "Phone_3"
   ],
   "criteria": [
     {
@@ -46,9 +46,9 @@
     {
       "id": "Egor (DM4)",
       "scores": [
-        [1, 1, 1],
-        [5, 5, 5],
-        [10, 10, 10]
+        [1, 10, 10],
+        [10, 1, 1],
+        [5, 5, 5]
       ]
     }
   ],
@@ -56,6 +56,6 @@
     "alpha": 0.95,
     "B": 2,
     "gamma": 0.5,
-    "L": 0.25
+    "L": 0.10
   }
 }

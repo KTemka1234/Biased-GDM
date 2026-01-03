@@ -4,8 +4,8 @@
     "B": 2,
     "gamma": 0.5,
     "L": 0.25,
-    "input_file": "\u041a\u043e\u043d\u0442\u0440\u043f\u0440\u0438\u043c\u0435\u0440.json",
-    "output_file": "EABM_results_\u041a\u043e\u043d\u0442\u0440\u043f\u0440\u0438\u043c\u0435\u0440.json"
+    "input_file": "./\u041a\u043e\u043d\u0442\u0440\u043f\u0440\u0438\u043c\u0435\u0440_1.json",
+    "output_file": "EABM_results_\u041a\u043e\u043d\u0442\u0440\u043f\u0440\u0438\u043c\u0435\u0440_1.json"
   },
   "results": {
     "scores": {
@@ -149,17 +149,17 @@
       ]
     },
     "consensus_scores": {
-      "iPhone 17 Pro Max": [
+      "Phone_1": [
         0.5277777777777778,
         0.5,
         0.5
       ],
-      "Samsung Galaxy S25 Ultra": [
+      "Phone_2": [
         0.4722222222222222,
         0.4444444444444444,
         0.5833333333333333
       ],
-      "Xiaomi 17 Pro Max": [
+      "Phone_3": [
         0.4444444444444444,
         0.4166666666666667,
         0.7777777777777778

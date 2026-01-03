@@ -3,8 +3,15 @@ import sys
 from cli import cli
 
 if __name__ == "__main__":
+    print("Starting datasets analysis...")
+    
     # Тестовые данные
-    for file in ["Из статьи.json", "Контрпример.json", "Магистерский пример.json"]:
+    for file in [
+        "Из статьи.json",
+        "Контрпример_1.json",
+        "Контрпример_2.json",
+        "Магистерский датасет.json",
+    ]:
         print(f"Processing file: {file}")
         sys.argv = [
             "data_analysis_pipeline.py",
